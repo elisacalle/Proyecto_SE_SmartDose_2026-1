@@ -47,3 +47,169 @@ El firmware debe estar estructurado en módulos independientes con manejo explí
 
 ### RNF-04 — Operación continua sin reinicio manual
 El sistema debe operar de forma continua sin requerir reinicio manual, tolerando condiciones de fallo sin detener su ciclo de operación normal. El dispositivo opera en el hogar de un paciente que en muchos casos vive solo y no cuenta con asistencia técnica permanente. Un sistema que se bloquea ante un error obliga a una intervención externa que puede no ocurrir a tiempo, resultando en tomas de medicación perdidas. La resiliencia operacional no es una característica deseable sino un requisito de seguridad para este tipo de aplicación.
+
+
+# Pruebas para esos requerimientos
+
+REQUERIMIENTOS FUNCIONALES
+RF-01 Programar hasta 4 horarios
+Estrategia
+1)	Programar 4 horarios desde la GUI 
+2)	Guardar configuración 
+3)	Apagar el sistema 
+4)	Encender nuevamente 
+5)	Verificar: 
+•	Los horarios siguen almacenados 
+•	Son correctos 
+•	El sistema los usa para dispensar
+
+Validación 
+1)	El sistema almacena exactamente 4 horarios.
+2)	Tras reinicio, los horarios siguen iguales.
+
+
+RF-02 Dispensación automática 
+Estrategia
+1)	Configurar horario cercano
+2)	Medir tiempo real vs Activación
+Validación 
+1)	Diferencia + o – 1 min (se usa cronómetro)
+
+
+RF-03 Detección de dispensación
+Estrategia
+1)	Simular dispensación normal
+2)	Bloquear salida(atasco)
+3)	Quitar pastilla (compartimento vacío)
+Validación 
+1)	Sensor detecta:
+OK-----INFO
+Falla----ERROR
+
+
+
+RF-04 Alerta por no recolección
+
+Estrategia
+1)	Dispensar
+2)	No retirar pastilla
+
+Validación 
+1)	Led y buzzer se activan después de un tiempo
+
+
+RF-05 Detectar compartimento vacío
+Estrategia
+1)	Vaciar compartimento
+2)	Forzar evento de dispensación
+
+Validación 
+1)	No se activa motor 
+2)	Se genera alerta
+
+RF-06 Alerta compartimento vacío
+Estrategia
+1)	Activar condición de vacío manualmente
+Validación 
+1)	LED + buzzer + log WARN/ERROR
+
+RF-07 Logging con timestamp
+Estrategia
+1)	Ejecutar eventos
+2)	Leer UART
+Validación 
+1)	Timestamp coincide con RTC
+
+RF-08 Severidad del log
+Estrategia
+1)	Generar eventos de cada tipo
+Validación 
+1)	INFO/WARN/ERROR correctamente asignados
+
+RF-09 Información en pantalla
+Estrategia
+1)	Comparar GUI vs valores internos
+Validación 
+1)	Datos coinciden con sistema
+
+RF-10 Modificar/Eliminar horarios
+Estrategia
+1)	Crear horario
+2)	Modificarlo
+3)	Eliminarlo
+4)	Esperar evento
+Validación 
+1)	Sistema responde al cambio en tiempo real
+
+REQUERIMIENTOS NO FUNCIONALES
+RNF-01 (Tiempo de respuesta<500 ms)
+Estrategia
+1)	Medir con cronómetro o logs
+Validación 
+1)	Tiempo <=500 ms
+
+
+
+
+RNF-02 Precisión temporal
+Estrategia
+1)	Comparar RTC vs reloj externo por varios minutos
+Validación
+1)	Error <= 1min
+
+RNF-03 Firmware modular
+Estrategia
+1)	Revisión de código
+Validación 
+1)	Separación en módulos:
+-GUI
+-RTC
+-Dispensador
+-Sensores
+
+RNF-04 Operación continua
+Estrategia
+1)	Simular fallos:
+-Sensor desconectado
+-Compartimento vacío
+2) Ejecutar durante varias horas
+
+
+Validación 
+1)	Sistema no se detiene
+
+
+ARTEFACTOS A USAR
+1)	Monitor serial (UART)
+2)	Cronómetro
+3)	Multímetro
+4)	Cámara
+5)	Logs guardados
+6)	Scripts
+
+
+Tipos de test
+Pruebas unitarias (Prueba de una sola pieza aislada del sistema)
+1)	Leer hora del RTC (DS3231) 
+2)	Detectar si el sensor cambia de estado 
+3)	Encender/apagar buzzer 
+4)	Dibujar algo en la pantalla
+Pruebas de integración (Prueba de interacción de módulos juntos)
+1)	Configuras horario en GUI 
+2)	Se guarda en memoria 
+3)	RTC llega a la hora 
+4)	Se activa dispensación
+Pruebas de sistema (Se prueba como lo ejecutaría el usuario)
+1)	Usuario configura horarios 
+2)	Espera
+3)	Sistema dispensa
+4)	Usuario recoge
+5)	Se registra en log
+Pruebas de fallo (Probar lo que pasa cuando las cosas salen mal)
+1)	Compartimento vacío
+2)	Pastilla atascada
+3)	Usuario no recoge
+4)	Sensor desconectado
+5)	RTC falla
+
+
