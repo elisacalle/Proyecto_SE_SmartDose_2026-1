@@ -16,7 +16,7 @@ El sistema debe permitir programar hasta cuatro horarios de dispensación diario
 -	Son correctos 
 -	El sistema los usa para dispensar
 
-* Validación 
+**Validación**
 1)	El sistema almacena exactamente 4 horarios.
 2)	Tras reinicio, los horarios siguen iguales.
 
@@ -29,7 +29,7 @@ El sistema debe dispensar automáticamente la dosis programada cuando el horario
 1)	Configurar horario cercano
 2)	Medir tiempo real vs Activación
 
-* Validación 
+**Validación**
 1)	Diferencia + o – 1 min (se usa cronómetro)
 
 
@@ -42,7 +42,7 @@ El sistema debe detectar mediante un sensor si la pastilla fue efectivamente dis
 2)	Bloquear salida(atasco)
 3)	Quitar pastilla (compartimento vacío)
 
-* Validación 
+**Validación**
 1)	Sensor detecta:
 OK-----INFO
 Falla----ERROR
@@ -56,7 +56,7 @@ El sistema debe emitir una alerta sonora y visual cuando el usuario no recoja la
 1)	Dispensar
 2)	No retirar pastilla
 
-* Validación 
+**Validación**
 1)	Led y buzzer se activan después de un tiempo
 
 ### RF-05 — Detectar compartimento vacío antes de dispensar
@@ -67,7 +67,7 @@ El sistema debe detectar si el compartimento de medicamentos está vacío antes 
 1)	Vaciar compartimento
 2)	Forzar evento de dispensación
 
-* Validación 
+**Validación**
 1)	No se activa motor 
 2)	Se genera alerta
 
@@ -77,7 +77,7 @@ El sistema debe emitir una alerta sonora y visual cuando el compartimento de med
 #### Prueba para el requerimiento
 1)	Activar condición de vacío manualmente
 
-* Validación 
+**Validación**
 1)	LED + buzzer + log WARN/ERROR
 
 ### RF-07 — Registrar eventos con marca temporal
@@ -87,7 +87,7 @@ El sistema debe registrar cada evento relevante como dispensaciones, alertas y e
 1)	Ejecutar eventos
 2)	Leer UART
 
-* Validación 
+**Validación**
 1)	Timestamp coincide con RTC
 
 ### RF-08 — Clasificar el log con niveles de severidad
@@ -97,7 +97,7 @@ El sistema debe clasificar cada entrada del log con un nivel de severidad: INFO,
 
 1)	Generar eventos de cada tipo
 
-* Validación 
+**Validación**
 1)	INFO/WARN/ERROR correctamente asignados
 
 ### RF-09 — Mostrar hora, horarios configurados y estado en pantalla
@@ -106,7 +106,7 @@ El sistema debe mostrar en la pantalla táctil la hora actual, los horarios conf
 #### Prueba para el requerimiento
 1)	Comparar GUI vs valores internos
 
-* Validación 
+**Validación**
 1)	Datos coinciden con sistema
 
 ### RF-10 — Modificar o eliminar horarios desde la GUI
@@ -118,7 +118,7 @@ El sistema debe permitir modificar o eliminar horarios de dispensación previame
 3)	Eliminarlo
 4)	Esperar evento
 
-* Validación 
+**Validación** 
 1)	Sistema responde al cambio en tiempo real
 
 ---
@@ -131,7 +131,7 @@ El sistema debe responder a cualquier entrada del usuario en la pantalla táctil
 #### Prueba para el requerimiento
 1)	Medir con cronómetro o logs
 
-* Validación 
+**Validación**
 1)	Tiempo <=500 ms
 
 ### RNF-02 — Precisión temporal máxima de ±1 minuto
@@ -140,7 +140,7 @@ El sistema debe mantener una precisión temporal máxima de ±1 minuto respecto 
 #### Prueba para el requerimiento
 1)	Comparar RTC vs reloj externo por varios minutos
 
-* Validación
+**Validación**
 1)	Error <= 1min
 
 ### RNF-03 — Firmware modular con manejo de errores y documentación
@@ -149,7 +149,7 @@ El firmware debe estar estructurado en módulos independientes con manejo explí
 #### Prueba para el requerimiento
 1)	Revisión de código
 
-* Validación 
+**Validación**
 1)	Separación en módulos:
 -GUI
 -RTC
@@ -165,9 +165,10 @@ El sistema debe operar de forma continua sin requerir reinicio manual, tolerando
 -Compartimento vacío
 2) Ejecutar durante varias horas
 
-* Validación 
+**Validación** 
 1)	Sistema no se detiene
 
+--- 
 
 ## Artefactos a usar
 
