@@ -3,7 +3,6 @@
 #define SERVO_GPIO_T3   16
 #define SERVO_GPIO_T4   17
  
-// Solo sensores de bandeja. Los sensores superiores fueron eliminados.
 #define IR_BAND_T1      36
 #define IR_BAND_T2      39
 #define IR_BAND_T3      25
@@ -27,17 +26,15 @@
 #define NEXTION_BAUD     9600
 #define NEXTION_BUF      512
  
-// -----------------------------------------------------------------------------
 // PARAMETROS
-// -----------------------------------------------------------------------------
  
 #define MAX_TUBOS               4
 #define SERVO_FREQ_HZ           50
 #define SERVO_MIN_US            600
-#define SERVO_MAX_US            2200
-#define SERVO_ANGULO_ABIERTO    90
+#define SERVO_MAX_US            1800
+#define SERVO_ANGULO_ABIERTO    180
 #define SERVO_ANGULO_CERRADO    0
-#define SERVO_MS_ACCION         400
+#define SERVO_MS_ACCION         1000
 #define TIMEOUT_CAIDA_MS        3000
 #define TIMEOUT_RECOGIDA_MS     60000
 #define ERROR_ALARMA_MS         15000
@@ -52,9 +49,7 @@
 // FC-51 tipico: LOW = objeto detectado. Si tu sensor trabaja al reves, pon 0.
 #define SENSOR_ACTIVO_EN_LOW    1
  
-// -----------------------------------------------------------------------------
 // ESTRUCTURAS
-// -----------------------------------------------------------------------------
  
 typedef enum {
     TUBO_OK = 0,
@@ -75,9 +70,7 @@ typedef struct {
     bool          alerta_activa;   // true para dosis lista o error no confirmado
 } info_tubo_t;
  
-// -----------------------------------------------------------------------------
 // VARIABLES GLOBALES
-// -----------------------------------------------------------------------------
  
 static const char *TAG = "SMARTDOSE";
  
@@ -95,18 +88,14 @@ static SemaphoreHandle_t g_mutex;
 static int g_ultimo_minuto[MAX_TUBOS];
 static char g_logs[MAX_LOGS][LOG_LEN];
  
-// -----------------------------------------------------------------------------
 // UTILIDADES
-// -----------------------------------------------------------------------------
  
 static int64_t millis(void)
 {
     return esp_timer_get_time() / 1000;
 }
  
-// -----------------------------------------------------------------------------
 // SERVO
-// -----------------------------------------------------------------------------
  
 static uint32_t angulo_a_duty(int angulo)
 {
@@ -137,9 +126,7 @@ static void servo_dispensar(int idx, int cantidad)
     }
 }
  
-// -----------------------------------------------------------------------------
 // SENSOR DE BANDEJA
-// -----------------------------------------------------------------------------
  
 static bool sensor_leer(int gpio)
 {
@@ -162,16 +149,12 @@ static bool bandeja_tiene_pastilla(int idx)
     return sensor_leer(IR_BAND_GPIOS[idx]);
 }
  
-// -----------------------------------------------------------------------------
 // ALERTAS
-// -----------------------------------------------------------------------------
  
 static void buzzer_set(bool on) { gpio_set_level(PIN_BUZZER, on ? 1 : 0); }
 static void led_set(bool on)    { gpio_set_level(PIN_LED,    on ? 1 : 0); }
  
-// -----------------------------------------------------------------------------
 // RTC DS3231
-// -----------------------------------------------------------------------------
  
 static uint8_t bcd2dec(uint8_t b) { return (uint8_t)((b >> 4) * 10 + (b & 0x0F)); }
 static uint8_t dec2bcd(uint8_t d) { return (uint8_t)(((d / 10) << 4) | (d % 10)); }
@@ -224,9 +207,7 @@ static bool ds3231_get_hora(int *h, int *m, int *s)
     return true;
 }
  
-// -----------------------------------------------------------------------------
 // NEXTION
-// -----------------------------------------------------------------------------
  
 static void nextion_write_raw(const char *s)
 {
@@ -317,6 +298,30 @@ static void nextion_limpiar_campos_config(void)
     }
 }
  
+static void nextion_actualizar_horarios_page0(void)
+{
+    char txt[40];
+    char obj[20];
+ 
+    for (int i = 0; i < MAX_TUBOS; i++) {
+        horario_t hor;
+ 
+        xSemaphoreTake(g_mutex, portMAX_DELAY);
+        hor = g_horarios[i];
+        xSemaphoreGive(g_mutex);
+ 
+        if (hor.activo) {
+            snprintf(txt, sizeof(txt), "%02d:%02d x%d", hor.hora, hor.minuto, hor.cantidad);
+        } else {
+            snprintf(txt, sizeof(txt), "Sin horario");
+        }
+ 
+        // Nombres esperados en page0: tT1Hor, tT2Hor, tT3Hor, tT4Hor
+        snprintf(obj, sizeof(obj), "tT%dHor", i + 1);
+        nextion_set_txt(obj, txt);
+    }
+}
+ 
 static void nextion_actualizar_pantalla(void)
 {
     int h = 0, m = 0, s = 0;
@@ -341,14 +346,9 @@ static void nextion_actualizar_pantalla(void)
  
         if (info.alerta_activa) alerta_general = true;
         if (info.estado == TUBO_FALLO) fallo_general = true;
- 
-        if (hor.activo) snprintf(txt, sizeof(txt), "%02d:%02d x%d", hor.hora, hor.minuto, hor.cantidad);
-        else            snprintf(txt, sizeof(txt), "Sin horario");
- 
-        char obj[20];
-        snprintf(obj, sizeof(obj), "tT%dHor", i + 1);
-        nextion_set_txt(obj, txt);
     }
+ 
+    nextion_actualizar_horarios_page0();
  
     if (fallo_general)       nextion_set_txt("tMsg", "Error registrado. Revise mecanismo.");
     else if (alerta_general) nextion_set_txt("tMsg", "Dosis lista. Retirar pastilla.");
@@ -358,9 +358,7 @@ static void nextion_actualizar_pantalla(void)
     nextion_actualizar_logs();
 }
  
-// -----------------------------------------------------------------------------
 // NVS
-// -----------------------------------------------------------------------------
  
 static void nvs_guardar(void)
 {
@@ -388,6 +386,20 @@ static void nvs_guardar(void)
     nvs_commit(hdl);
     nvs_close(hdl);
     ESP_LOGI(TAG, "Guardado en NVS: %s", buf);
+}
+ 
+static void nvs_borrar_horarios(void)
+{
+    nvs_handle_t hdl;
+    if (nvs_open("smartdose", NVS_READWRITE, &hdl) != ESP_OK) return;
+ 
+    // Se deja una marca explicita de estado vacio y tambien se intenta borrar la clave.
+    // Esto evita que queden horarios antiguos si hubo un reinicio inesperado.
+    nvs_set_str(hdl, "horarios", "VACIO");
+    nvs_commit(hdl);
+    nvs_close(hdl);
+ 
+    ESP_LOGI(TAG, "Horarios borrados de NVS");
 }
  
 static void nvs_cargar(void)
@@ -440,9 +452,7 @@ static void marcar_rtc_configurado(void)
     nvs_close(hdl);
 }
  
-// -----------------------------------------------------------------------------
 // LOG
-// -----------------------------------------------------------------------------
  
 static void smartdose_log(int tubo, const char *nivel, const char *codigo, const char *msg)
 {
@@ -494,12 +504,10 @@ static void log_evento(int tubo, const char *nivel, const char *msg)
  
 static void log_error_01(int tubo)
 {
-    smartdose_log(tubo, "ERROR", "01", "No se detecto pastilla tras 4 intentos");
+    smartdose_log(tubo, "ERROR", "01", "Falla de dispensacion: no se detecto dosis; posible atasco, tubo vacio o falla del motor");
 }
  
-// -----------------------------------------------------------------------------
 // DISPENSACION
-// -----------------------------------------------------------------------------
  
 static bool hay_alguna_alerta_activa(void)
 {
@@ -585,7 +593,7 @@ static void ciclo_dispensacion(int idx)
  
     if (!cayo) {
         char msg[120];
-        snprintf(msg, sizeof(msg), "ERROR 01: Tubo %d no dispenso. Revisar atasco o recargar.", idx + 1);
+        snprintf(msg, sizeof(msg), "ERROR 01: Tubo %d - falla de dispensacion. Revise atasco, motor o pastillas.", idx + 1);
         log_error_01(idx);
  
         xSemaphoreTake(g_mutex, portMAX_DELAY);
@@ -699,9 +707,7 @@ static bool solicitar_dispensacion(int idx)
     return ok == pdPASS;
 }
  
-// -----------------------------------------------------------------------------
 // COMANDOS
-// -----------------------------------------------------------------------------
  
 static void imprimir_status(void)
 {
@@ -769,6 +775,7 @@ static bool configurar_horario(int tubo, int h, int m, int cantidad)
  
     nextion_set_txt("tMsg", "Horario guardado.");
     nextion_actualizar_campos_config();
+    nextion_actualizar_horarios_page0();
     nextion_actualizar_pantalla();
     return true;
 }
@@ -786,6 +793,33 @@ static void ack_tubo(int idx)
     actualizar_salidas_alarma();
     printf("[OK] Alerta confirmada tubo %d.\n", idx + 1);
     nextion_cmd("page page0");
+    nextion_actualizar_pantalla();
+}
+ 
+static void borrar_todos_los_horarios(void)
+{
+    xSemaphoreTake(g_mutex, portMAX_DELAY);
+    for (int i = 0; i < MAX_TUBOS; i++) {
+        g_horarios[i].activo = false;
+        g_horarios[i].hora = 0;
+        g_horarios[i].minuto = 0;
+        g_horarios[i].cantidad = 1;
+        g_ultimo_minuto[i] = -1;
+        g_info[i].estado = TUBO_OK;
+        g_info[i].alerta_activa = false;
+        g_info[i].pastilla_en_bandeja = false;
+    }
+    xSemaphoreGive(g_mutex);
+ 
+    actualizar_salidas_alarma();
+    nvs_borrar_horarios();
+ 
+    nextion_set_txt("tMsg", "Horarios borrados. Sistema sin dispensaciones.");
+    nextion_limpiar_campos_config();
+    nextion_actualizar_horarios_page0();
+    nextion_set_val("jAlerta", 0);
+ 
+    log_evento(-1, "INFO", "Horarios borrados. Sistema apagado");
     nextion_actualizar_pantalla();
 }
  
@@ -836,25 +870,8 @@ static void procesar_comando(const char *cmd)
     }
  
     if (strcmp(limpio, "clear") == 0 || strcmp(limpio, "borrar") == 0) {
-        xSemaphoreTake(g_mutex, portMAX_DELAY);
-        for (int i = 0; i < MAX_TUBOS; i++) {
-            g_horarios[i].activo = false;
-            g_horarios[i].hora = 0;
-            g_horarios[i].minuto = 0;
-            g_horarios[i].cantidad = 1;
-            g_ultimo_minuto[i] = -1;
-            g_info[i].estado = TUBO_OK;
-            g_info[i].alerta_activa = false;
-            g_info[i].pastilla_en_bandeja = false;
-        }
-        xSemaphoreGive(g_mutex);
-        actualizar_salidas_alarma();
-        nvs_guardar();
-        printf("[OK] Todos los horarios borrados.\n");
-        nextion_set_txt("tMsg", "Horarios borrados.");
-        nextion_limpiar_campos_config();
-        log_evento(-1, "INFO", "Horarios borrados");
-        nextion_actualizar_pantalla();
+        borrar_todos_los_horarios();
+        printf("[OK] Todos los horarios borrados. Sistema sin dispensaciones.\n");
         return;
     }
  
@@ -925,9 +942,7 @@ static void procesar_comando(const char *cmd)
     }
 }
  
-// -----------------------------------------------------------------------------
 // TAREAS
-// -----------------------------------------------------------------------------
  
 static void tarea_scheduler(void *p)
 {
@@ -1086,9 +1101,7 @@ static void tarea_nextion_update(void *p)
     }
 }
  
-// -----------------------------------------------------------------------------
 // APP MAIN
-// -----------------------------------------------------------------------------
  
 void app_main(void)
 {
@@ -1203,7 +1216,7 @@ void app_main(void)
  
     if (!rtc_ya_configurado()) {
         ESP_LOGW(TAG, "RTC no configurado. Inicializando a 17:43:00");
-        if (ds3231_set_hora(17, 43, 0)) {
+        if (ds3231_set_hora(13, 44, 0)) {
             marcar_rtc_configurado();
             ESP_LOGI(TAG, "RTC configurado correctamente");
         } else {
