@@ -11,25 +11,21 @@ Sistema automático de dispensación de medicamentos basado en **ESP32** con **F
 3. [Estructura del firmware](#3-estructura-del-firmware)
 4. [Tareas FreeRTOS](#4-tareas-freertos)
 5. [Módulos de software](#5-módulos-de-software)
-6. [Máquina de estados por tubo](#6-máquina-de-estados-por-tubo)
-7. [Flujo de dispensación](#7-flujo-de-dispensación)
-8. [Protocolo de comandos](#8-protocolo-de-comandos)
-9. [Persistencia — NVS](#9-persistencia--nvs)
-10. [Parámetros configurables](#10-parámetros-configurables)
+6. [Integración ESP32–Nextion](#6-integración-esp32nextion)
+7. [Máquina de estados por tubo](#7-máquina-de-estados-por-tubo)
+8. [Flujo de dispensación](#8-flujo-de-dispensación)
+9. [Protocolo de comandos](#9-protocolo-de-comandos)
+10. [Persistencia — NVS](#10-persistencia--nvs)
+11. [Parámetros configurables](#11-parámetros-configurables)
 
 ---
 
 ## 1. Visión general
 
-<img width="500" height="340" alt="image" src="https://github.com/user-attachments/assets/912a8959-30b6-4489-9c71-38240b59b71f" />
+<img width="512" height="164" alt="image" src="https://github.com/user-attachments/assets/7504e5a8-7ee9-40ea-922f-c6e962006526" />
 
 
-SmartDose controla hasta **4 tubos dispensadores** de forma independiente. Cada tubo tiene:
-- Un **servo motor** para liberar la pastilla.
-- Un **sensor IR de bandeja** para confirmar la caída.
-- Un **horario programado** almacenado en NVS.
-
-La interfaz con el usuario se realiza a través de una **pantalla Nextion** (táctil) y/o una **consola UART** (Serial Monitor).
+SmartDose controla hasta **4 tubos dispensadores** de forma independiente. La **Nextion** actúa exclusivamente como interfaz gráfica: recibe toques del usuario y muestra el estado del sistema. El **ESP32** centraliza toda la lógica: valida comandos, guarda horarios, ejecuta dispensaciones y actualiza la pantalla. La Nextion no controla motores ni sensores directamente.
 
 ---
 
@@ -49,44 +45,48 @@ La interfaz con el usuario se realiza a través de una **pantalla Nextion** (tá
 | LED de alerta | 12 | GPIO salida |
 | I2C SDA (DS3231) | 21 | I2C Master |
 | I2C SCL (DS3231) | 22 | I2C Master |
-| UART0 TX/RX | — | Consola de configuración (115200 bps) |
-| UART1 TX (→ Nextion) | 5 | UART1 (9600 bps) |
-| UART1 RX (← Nextion) | 4 | UART1 (9600 bps) |
+| UART0 TX/RX | — | Consola / depuración (115200 bps) |
+| UART1 TX → Nextion | 5 | UART1 (9600 bps) |
+| UART1 RX ← Nextion | 4 | UART1 (9600 bps) |
 
-### Periféricos y drivers ESP-IDF
-
-| Periférico | Driver | Uso |
+| Periférico | Driver ESP-IDF | Uso |
 |---|---|---|
-| Servos x4 | `driver/ledc` | PWM 50 Hz, resolución 14 bits |
+| Servos x4 | `driver/ledc` | PWM 50 Hz, 14 bits |
 | Sensores IR x4 | `driver/gpio` | Entrada digital con pull-up |
 | Buzzer + LED | `driver/gpio` | Salida digital |
-| DS3231 RTC | `driver/i2c` | Lectura/escritura hora actual |
-| Consola USB | `driver/uart` (UART0) | Comandos de configuración |
-| Nextion HMI | `driver/uart` (UART1) | Interfaz táctil |
+| DS3231 | `driver/i2c` | Lectura/escritura de hora |
+| Consola | `driver/uart` UART0 | Comandos de depuración |
+| Nextion HMI | `driver/uart` UART1 | Interfaz táctil |
 | Persistencia | `nvs_flash` / `nvs` | Horarios y flag RTC |
 
 ---
 
 ## 3. Estructura del firmware
 
-Todo el firmware reside en **`main.c`**, organizado en secciones funcionales:
+Todo el firmware reside en `main.c`, organizado en secciones funcionales:
 
 ```
 main.c
 │
-├── Definiciones de pines y parámetros
+├── Definiciones de pines y parámetros (#define)
 ├── Estructuras de datos (horario_t, info_tubo_t, estado_tubo_t)
-├── Variables globales compartidas + mutex FreeRTOS
+├── Variables globales + mutex FreeRTOS + buffer de logs
 │
-├── [Módulo] Servo          — angulo_a_duty(), servo_set(), servo_dispensar()
-├── [Módulo] Sensor IR      — sensor_leer() con debounce, bandeja_tiene_pastilla()
-├── [Módulo] Alertas        — buzzer_set(), led_set(), actualizar_salidas_alarma()
-├── [Módulo] RTC DS3231     — ds3231_leer(), ds3231_get_hora(), ds3231_set_hora()
-├── [Módulo] Nextion HMI    — nextion_cmd(), nextion_set_txt(), nextion_actualizar_pantalla()
-├── [Módulo] NVS            — nvs_guardar(), nvs_cargar(), rtc_ya_configurado()
-├── [Módulo] Log            — log_evento() → printf + Nextion
-├── [Módulo] Dispensación   — ciclo_dispensacion(), solicitar_dispensacion()
-├── [Módulo] Comandos       — procesar_comando(), configurar_horario(), ack_tubo()
+├── [Módulo] Servo         — angulo_a_duty(), servo_set(), servo_dispensar()
+├── [Módulo] Sensor IR     — sensor_leer() con debounce, bandeja_tiene_pastilla()
+├── [Módulo] Alertas       — buzzer_set(), led_set(), actualizar_salidas_alarma()
+├── [Módulo] RTC DS3231    — ds3231_leer(), ds3231_get_hora(), ds3231_set_hora()
+├── [Módulo] Nextion HMI   — nextion_cmd(), nextion_set_txt(), nextion_set_val()
+│                            nextion_actualizar_pantalla(), nextion_actualizar_logs()
+│                            nextion_actualizar_campos_config(), nextion_actualizar_horarios_page0()
+│                            nextion_limpiar_campos_config()
+├── [Módulo] NVS           — nvs_guardar(), nvs_cargar(), nvs_borrar_horarios()
+│                            rtc_ya_configurado(), marcar_rtc_configurado()
+├── [Módulo] Log           — smartdose_log(), log_evento(), log_error_01()
+├── [Módulo] Dispensación  — ciclo_dispensacion(), solicitar_dispensacion()
+│                            dispensar_con_reintentos_y_confirmar_bandeja()
+├── [Módulo] Comandos      — procesar_comando(), configurar_horario()
+│                            ack_tubo(), borrar_todos_los_horarios()
 │
 └── Tareas FreeRTOS
     ├── tarea_scheduler
@@ -94,24 +94,19 @@ main.c
     ├── tarea_uart_monitor
     ├── tarea_nextion_rx
     ├── tarea_nextion_update
-    └── tarea_dispensacion (creada dinámicamente)
+    └── tarea_dispensacion (dinámica por tubo)
 ```
 
-### Estructuras de datos principales
+### Estructuras de datos
 
 ```c
-// Estado operacional de un tubo
 typedef enum { TUBO_OK, TUBO_DISPENSANDO, TUBO_FALLO } estado_tubo_t;
 
-// Horario programado por el usuario
 typedef struct {
     bool activo;
-    int  hora;
-    int  minuto;
-    int  cantidad;   // 1–10 pastillas
+    int  hora, minuto, cantidad;  // cantidad: 1–10 pastillas
 } horario_t;
 
-// Estado en tiempo real de un tubo
 typedef struct {
     estado_tubo_t estado;
     bool          pastilla_en_bandeja;
@@ -119,7 +114,7 @@ typedef struct {
 } info_tubo_t;
 ```
 
-**Protección de concurrencia:** todas las lecturas/escrituras sobre `g_horarios[]` y `g_info[]` están protegidas con un **mutex FreeRTOS** (`g_mutex`).
+Todas las lecturas/escrituras sobre `g_horarios[]` y `g_info[]` están protegidas con un **mutex FreeRTOS** (`g_mutex`). Los últimos 5 eventos del sistema se mantienen en `g_logs[5][120]`.
 
 ---
 
@@ -128,82 +123,136 @@ typedef struct {
 | Tarea | Prioridad | Stack | Período | Función |
 |---|---|---|---|---|
 | `tarea_scheduler` | 6 | 4 KB | 1 s | Compara hora RTC con horarios; lanza dispensación automática |
-| `tarea_nextion_rx` | 5 | 4 KB | Reactiva | Lee comandos enviados desde la Nextion vía UART1 |
-| `tarea_monitor` | 4 | 4 KB | 7 s | Verifica estado de bandejas; actualiza alertas visuales/sonoras |
-| `tarea_uart_monitor` | 3 | 4 KB | Reactiva | Lee comandos desde consola UART0 (Serial Monitor) |
-| `tarea_nextion_update` | 2 | 4 KB | 1.5 s | Refresca la pantalla Nextion con hora, estados y horarios |
-| `tarea_dispensacion` | 7 | 4 KB | Bajo demanda | Creada dinámicamente por tubo; se elimina al terminar |
+| `tarea_nextion_rx` | 5 | 4 KB | Reactiva | Lee comandos enviados por la Nextion vía UART1 |
+| `tarea_monitor` | 4 | 4 KB | 7 s | Verifica bandejas y actualiza alertas |
+| `tarea_uart_monitor` | 3 | 4 KB | Reactiva | Lee comandos desde consola UART0 |
+| `tarea_nextion_update` | 2 | 4 KB | 1.5 s | Refresca la pantalla Nextion periódicamente |
+| `tarea_dispensacion` | 7 | 4 KB | Bajo demanda | Creada por tubo; se auto-elimina al terminar |
 
-> **Nota:** `tarea_dispensacion` se crea con `xTaskCreate()` cuando se solicita una dispensación (por horario o manual). Se auto-elimina con `vTaskDelete(NULL)` al completar el ciclo.
+> `tarea_dispensacion` se crea con `xTaskCreate()` por horario o comando manual, y se elimina con `vTaskDelete(NULL)` al completar el ciclo.
 
 ---
 
 ## 5. Módulos de software
 
-### 5.1 Servo (LEDC PWM)
+### Servo (LEDC PWM)
+- **50 Hz**, resolución **14 bits**, pulso **600–2500 µs**.
+- Apertura: **180°** → Cierre: **0°**, con `SERVO_MS_ACCION = 400 ms` entre posiciones.
+- Conversión: `us = 600 + (2500-600) * angulo / 180` → `duty = (us * 16383) / 20000`
 
-- Configuración: **50 Hz**, resolución **14 bits**, rango de pulso **600–2500 µs**.
-- La función `servo_dispensar(idx, cantidad)` alterna entre ángulo abierto (90°) y cerrado (0°), con `SERVO_MS_ACCION = 400 ms` entre posiciones.
-- Fórmula de conversión:
+### Sensor IR de bandeja (FC-51)
+- Anti-rebote por software: **3 muestras** con 10 ms de separación; mayoría decide.
+- `SENSOR_ACTIVO_EN_LOW = 1` → LOW = objeto presente.
 
-```c
-us = SERVO_MIN_US + (SERVO_MAX_US - SERVO_MIN_US) * angulo / 180
-duty = (us * 16383) / 20000
+### RTC DS3231
+- I²C a **400 kHz**, dirección `0x68`. Conversión BCD ↔ decimal implementada manualmente.
+- Si no fue configurado previamente (flag en NVS), se inicializa a hora por defecto al arrancar.
+
+### Alertas
+- `actualizar_salidas_alarma()` enciende LED y buzzer si **cualquier** tubo tiene `alerta_activa = true` o `pastilla_en_bandeja = true`.
+
+### Sistema de logs
+- Formato: `HH:MM:SS | NIVEL [CODIGO] | T<n>/SYS | Mensaje`
+- Buffer circular de 5 entradas en `g_logs[]`. El más reciente queda en `g_logs[0]`.
+- Cada log se escribe por `printf`, se guarda en el buffer y se envía a la Nextion.
+
+### NVS
+- Namespace `"smartdose"`, claves: `"horarios"` (string) y `"rtc_set"` (uint8).
+- `nvs_borrar_horarios()` escribe `"VACIO"` explícitamente para evitar datos corruptos tras reinicios inesperados.
+
+---
+
+## 6. Integración ESP32–Nextion
+
+### Comunicación física
+
+```
+UART0 → Consola VSCode (115200 bps) — depuración y comandos manuales
+UART1 → Nextion HMI  (9600 bps)    — interfaz táctil bidireccional
+
+Nextion TX → GPIO4 (ESP32 RX)
+Nextion RX → GPIO5 (ESP32 TX)
 ```
 
-### 5.2 Sensor IR de bandeja (FC-51)
+TX y RX deben estar cruzados. GND común entre todos los módulos.
 
-- Lectura con **anti-rebote por software**: toma `DEBOUNCE_COUNT = 3` muestras con 10 ms entre cada una; retorna `true` si la mayoría detecta objeto.
-- Lógica configurable: `SENSOR_ACTIVO_EN_LOW = 1` (LOW = objeto presente, comportamiento estándar FC-51).
+### Protocolo de comunicación
 
-### 5.3 RTC DS3231
+**Nextion → ESP32:** cadenas ASCII terminadas en `\r\n` o `0xFF 0xFF 0xFF`.
 
-- Comunicación **I2C** a 400 kHz, dirección `0x68`.
-- Funciones: `ds3231_get_hora()`, `ds3231_set_hora()`, `ds3231_leer()`.
-- Conversión **BCD ↔ decimal** implementada manualmente.
-- Al arrancar, si el RTC no fue configurado previamente (flag en NVS), se inicializa a una hora por defecto.
+Ejemplo de evento táctil en Nextion (botón Guardar T1):
+```
+prints "T1=",0
+prints nT1H.val,0
+prints ":",0
+prints nT1M.val,0
+prints ":",0
+prints nT1C.val,0
+printh 0D 0A
+```
 
-### 5.4 Nextion HMI
+**ESP32 → Nextion:** comandos ASCII terminados siempre en `0xFF 0xFF 0xFF`.
 
-- Comunicación **UART1** a 9600 bps.
-- Protocolo Nextion: comandos ASCII terminados con `0xFF 0xFF 0xFF`.
-- Funciones de escritura: `nextion_set_txt(objeto, texto)`, `nextion_set_val(objeto, valor)`, `nextion_cmd(formato, ...)`.
-- La función `nextion_actualizar_pantalla()` refresca: hora RTC, estado de cada tubo, contenido de bandeja, horario activo y mensaje global.
-- Páginas usadas:
-  - `page0` → pantalla principal
-  - `page2` → alerta de dosis lista
-  - `page3` → pantalla de error
+```c
+// Toda escritura pasa por nextion_write_raw(), que agrega 0xFF 0xFF 0xFF
+nextion_set_txt("tHora", "14:23:08");   // → tHora.txt="14:23:08" + FF FF FF
+nextion_set_val("jAlerta", 100);        // → jAlerta.val=100 + FF FF FF
+nextion_cmd("page page2");              // → page page2 + FF FF FF
+```
 
-### 5.5 Alertas (Buzzer + LED)
+### Funciones de envío (ESP32 → Nextion)
 
-- `actualizar_salidas_alarma()` enciende LED y buzzer si **cualquier** tubo tiene `alerta_activa = true` o `pastilla_en_bandeja = true`.
-- En error de dispensación: alarma activa por **15 segundos** (`ERROR_ALARMA_MS`), luego se apaga automáticamente aunque el estado `TUBO_FALLO` persiste hasta ACK manual.
+| Función | Uso |
+|---|---|
+| `nextion_write_raw(s)` | Envía string crudo + terminador `0xFF 0xFF 0xFF` |
+| `nextion_cmd(fmt, ...)` | Construye comando con formato y llama a `write_raw` |
+| `nextion_set_txt(obj, txt)` | Actualiza texto de un componente. Filtra comillas dobles |
+| `nextion_set_val(obj, val)` | Actualiza valor numérico o barra de progreso |
 
-### 5.6 Persistencia (NVS)
+### Funciones de sincronización de pantalla
 
-- Espacio NVS: namespace `"smartdose"`.
-- Claves almacenadas:
-  - `"horarios"` → string serializado con formato `T1=08:30:2;T3=20:00:1`
-  - `"rtc_set"` → flag `uint8_t` (1 = RTC ya fue configurado)
-- Se carga automáticamente al arrancar (`nvs_cargar()`).
-- Se guarda cada vez que se configura o borra un horario (`nvs_guardar()`).
+| Función | Qué actualiza |
+|---|---|
+| `nextion_actualizar_pantalla()` | Hora RTC, horarios `page0`, `tMsg`, `jAlerta`, logs |
+| `nextion_actualizar_horarios_page0()` | `tT1Hor`…`tT4Hor` con horario activo o `"Sin horario"` |
+| `nextion_actualizar_campos_config()` | `nT1H`, `nT1M`, `nT1C`…`nT4C` con valores reales de RAM |
+| `nextion_limpiar_campos_config()` | Resetea campos numéricos a 0/0/1 |
+| `nextion_actualizar_logs()` | `tLog1`…`tLog5` con el buffer circular `g_logs[]` |
+
+> **Fuente de verdad:** el ESP32, no la Nextion. Los valores de la pantalla solo son válidos después de que el ESP32 los recibe, valida y guarda en memoria.
+
+### Páginas de la Nextion
+
+| Página | Cuándo se muestra | Contenido principal |
+|---|---|---|
+| `page0` | Funcionamiento normal | Hora, horarios activos, mensaje general |
+| `page1` | Configuración de horarios | Campos numéricos hora/minuto/cantidad por tubo |
+| `page2` | Dosis en bandeja | Alerta de retiro de pastilla |
+| `page3` | Error de dispensación | Mensaje ERROR 01 y descripción de fallo |
+| `page4` | Historial | Últimos 5 eventos (`tLog1`…`tLog5`) |
+
+### Recepción de comandos (tarea_nextion_rx)
+
+<img width="512" height="315" alt="image" src="https://github.com/user-attachments/assets/1d0fdd0d-9b2c-41e0-b873-3b5339037264" />
+
+
+`procesar_comando()` es compartida entre UART0 y UART1. El prefijo `nxt:` enviado desde Nextion se elimina automáticamente antes de interpretar el comando.
 
 ---
 
-## 6. Máquina de estados por tubo
+## 7. Máquina de estados por tubo
 
-<img width="512" height="381" alt="image" src="https://github.com/user-attachments/assets/23d4d126-90b2-48dd-9b3f-cc716969c821" />
+<img width="512" height="280" alt="image" src="https://github.com/user-attachments/assets/f281a282-d3e1-4c46-81cd-69027a1aded1" />
 
 
 ---
 
-## 7. Flujo de dispensación
+## 8. Flujo de dispensación
 
 ```
 solicitar_dispensacion(idx)
         │
-        ├── ¿tubo ya en TUBO_DISPENSANDO? → Rechazar
-        │
+        ├── Tubo en TUBO_DISPENSANDO → rechazar
         └── xTaskCreate(tarea_dispensacion)
                     │
                     ▼
@@ -211,81 +260,74 @@ solicitar_dispensacion(idx)
                     │
                     ├── [1] Estado → TUBO_DISPENSANDO
                     │
-                    ├── [2] Bucle reintentos (hasta MAX_REINTENTOS_CAIDA = 4)
-                    │        │
-                    │        ├── servo_dispensar(idx, cantidad)
-                    │        │       └── Open → delay 400ms → Close → delay 400ms
-                    │        │
-                    │        └── Esperar detección en bandeja
-                    │               ├── ¿sensor activo antes de TIMEOUT_CAIDA_MS (3 s)? → Éxito ✓
-                    │               └── Timeout → siguiente reintento
+                    ├── [2] Hasta 4 reintentos:
+                    │       servo: 180° → 400ms → 0° → 400ms
+                    │       esperar sensor bandeja (máx 3 s)
+                    │       ├── Detectado → Éxito
+                    │       └── Timeout → WARN log → siguiente intento
                     │
-                    ├── [3a] ÉXITO: Estado → TUBO_OK, alerta_activa = true
-                    │         Esperar retiro de pastilla
-                    │         ├── bandeja vacía → apagar alarma, ciclo completado
-                    │         └── Timeout TIMEOUT_RECOGIDA_MS (60 s) → log WARN, reiniciar timer
+                    ├── [3a] ÉXITO → TUBO_OK, alerta ON, page2
+                    │       Esperar retiro (confirmación doble 300 ms)
+                    │       └── Bandeja vacía → alarma OFF, page0, log INFO
                     │
-                    └── [3b] FALLO: Estado → TUBO_FALLO, alerta_activa = true
-                              Alarma 15 s → apagar alarma, mantener TUBO_FALLO
+                    └── [3b] FALLO → TUBO_FALLO, alerta ON, page3, log ERROR 01
+                              15 s → alarma OFF, TUBO_FALLO persiste hasta ACK
 ```
 
 ---
 
-## 8. Protocolo de comandos
+## 9. Protocolo de comandos
 
-Los comandos son aceptados desde **UART0** (consola) y desde **Nextion** (prefijo `nxt:` ignorado automáticamente). No distinguen mayúsculas/minúsculas.
+Aceptados desde **UART0** (consola) y **UART1** (Nextion). No distinguen mayúsculas/minúsculas.
 
 | Comando | Descripción | Ejemplo |
 |---|---|---|
-| `CFG,tubo,hora,min,cantidad` | Configura horario de un tubo | `CFG,1,8,30,1` |
-| `T<n>=HH:MM:C` | Formato alternativo de horario | `T2=20:00:2` |
-| `DISP<n>` | Dispensación manual inmediata | `DISP3` |
-| `ACK<n>` | Confirma y limpia alerta de un tubo | `ACK1` |
-| `SETTIME=HH:MM:SS` | Sincroniza el RTC DS3231 | `SETTIME=09:15:00` |
-| `STATUS` / `REFRESH` | Imprime estado completo por consola + refresca Nextion | `STATUS` |
-| `CLEAR` / `BORRAR` | Borra todos los horarios (NVS incluido) | `CLEAR` |
+| `T<n>=HH:MM:C` | Configurar horario de un tubo | `T1=08:30:1` |
+| `CFG,tubo,hora,min,cantidad` | Formato alternativo | `CFG,1,8,30,1` |
+| `DISP<n>` | Dispensación manual | `DISP2` |
+| `ACK<n>` | Confirmar y limpiar alerta | `ACK1` |
+| `SETTIME=HH:MM:SS` | Sincronizar RTC | `SETTIME=09:15:00` |
+| `STATUS` / `REFRESH` | Estado en consola + refresco Nextion | `STATUS` |
+| `CLEAR` / `BORRAR` | Borrar todos los horarios | `CLEAR` |
 
-**Validaciones aplicadas:**
-- Tubo: 1–4
-- Hora: 0–23, Minuto: 0–59
-- Cantidad: 1–10 pastillas
+**Validaciones:** Tubo 1–4 · Hora 0–23 · Minuto 0–59 · Cantidad 1–10
 
 ---
 
-## 9. Persistencia — NVS
+## 10. Persistencia — NVS
 
 ```
 NVS namespace: "smartdose"
 │
-├── "horarios"  →  "T1=08:30:1;T3=20:00:2"   (string, máx 256 bytes)
-└── "rtc_set"   →  0x01                        (uint8, flag de configuración)
+├── "horarios" → "T1=08:30:1;T3=20:00:2"   (string, máx 256 bytes)
+└── "rtc_set"  → 0x01                        (uint8, flag de configuración)
 ```
 
-- Los horarios se serializan en texto plano separados por `;`.
+- Los horarios se serializan como texto separado por `;`. Si no hay horarios, se almacena `"VACIO"`.
 - Al arrancar, `nvs_cargar()` parsea el string y reconstruye `g_horarios[]`.
-- Si no hay horarios guardados, el valor almacenado es la cadena `"VACIO"`.
+- `nvs_borrar_horarios()` escribe `"VACIO"` explícitamente para evitar datos residuales tras reinicios inesperados.
 
 ---
 
-## 10. Parámetros configurables
-
-Todos los parámetros clave están definidos como `#define` al inicio del archivo:
+## 11. Parámetros configurables
 
 | Parámetro | Valor | Descripción |
 |---|---|---|
 | `MAX_TUBOS` | 4 | Número de tubos dispensadores |
-| `SERVO_FREQ_HZ` | 50 | Frecuencia PWM del servo |
+| `SERVO_FREQ_HZ` | 50 | Frecuencia PWM |
 | `SERVO_MIN_US` | 600 | Pulso mínimo servo (µs) |
 | `SERVO_MAX_US` | 2500 | Pulso máximo servo (µs) |
-| `SERVO_ANGULO_ABIERTO` | 90° | Ángulo de apertura del tubo |
-| `SERVO_ANGULO_CERRADO` | 0° | Ángulo de cierre del tubo |
+| `SERVO_ANGULO_ABIERTO` | 180° | Ángulo de apertura |
+| `SERVO_ANGULO_CERRADO` | 0° | Ángulo de cierre |
 | `SERVO_MS_ACCION` | 400 ms | Tiempo entre posiciones del servo |
-| `TIMEOUT_CAIDA_MS` | 3000 ms | Tiempo máximo para detectar caída de pastilla |
-| `TIMEOUT_RECOGIDA_MS` | 60000 ms | Tiempo máximo de espera antes de re-alertar |
-| `ERROR_ALARMA_MS` | 15000 ms | Duración de alarma en caso de fallo |
-| `MAX_REINTENTOS_CAIDA` | 4 | Intentos de dispensación antes de declarar fallo |
+| `TIMEOUT_CAIDA_MS` | 3000 ms | Espera máxima para detectar pastilla en bandeja |
+| `TIMEOUT_RECOGIDA_MS` | 60000 ms | Espera máxima antes de re-alertar pastilla no retirada |
+| `ERROR_ALARMA_MS` | 15000 ms | Duración de alarma en fallo de dispensación |
+| `MAX_REINTENTOS_CAIDA` | 4 | Intentos antes de declarar ERROR 01 |
 | `DEBOUNCE_COUNT` | 3 | Muestras para anti-rebote del sensor IR |
-| `TICK_SCHEDULER_MS` | 1000 ms | Período de revisión del scheduler |
+| `TICK_SCHEDULER_MS` | 1000 ms | Período del scheduler |
 | `TICK_MONITOR_MS` | 7000 ms | Período de monitoreo de bandejas |
 | `TICK_NEXTION_MS` | 1500 ms | Período de refresco de pantalla |
+| `MAX_LOGS` | 5 | Entradas del buffer circular de logs |
+| `NEXTION_BAUD` | 9600 | Baudrate UART1 Nextion |
 | `SENSOR_ACTIVO_EN_LOW` | 1 | Lógica del sensor IR (1 = LOW activo) |
