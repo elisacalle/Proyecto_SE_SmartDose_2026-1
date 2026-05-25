@@ -54,7 +54,7 @@ SmartDose/
 │   ├── Esquematico_SmartDose.md
 │   └── Prototipo_funcional/
 │
-├── Images/
+├── Imágenes/
 │   └── (diseño físico del sistema)
 │
 └── README.md
@@ -72,7 +72,7 @@ SmartDose/
 | `Docs/` | Documentación técnica completa del sistema. |
 | `Firmware/` | Todo el código fuente del ESP32 y archivos de configuración del entorno de desarrollo. |
 | `Hardware/` | Archivos de diseño físico, esquemático e interfaz gráfica. |
-| `Images/` | Registro fotográfico del prototipo físico construido. |
+| `Imágenes/` | Registro fotográfico del prototipo físico construido. |
 
 ---
 
@@ -127,11 +127,11 @@ Contiene los archivos de diseño físico y electrónico del sistema.
 
 ---
 
-### Images/
+### Imágenes/
 
 | Elemento | Descripción |
 |---|---|
-| Fotografías | Registro visual del diseño físico final del sistema SmartDose ensamblado. Usadas como referencia en el `README.md` y la documentación técnica. |
+| Fotografías | Registro visual del diseño físico del sistema SmartDose ensamblado. Usadas como referencia en el `README.md` y la documentación técnica. |
 
 ---
 
