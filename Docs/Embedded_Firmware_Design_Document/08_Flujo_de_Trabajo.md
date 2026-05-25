@@ -91,7 +91,7 @@ Contiene el **Embedded Firmware Design Document**, documento técnico que cubre 
 | `Estrategia_de_manejo_de_errores` | Catálogo de errores detectados, flujo de manejo automático, alarmas y acciones del operador. |
 | `Flujo_de_trabajo` | Estructura del repositorio y flujo de desarrollo del proyecto. |
 | `Estrategia_de_logging` | Formato del sistema de logs en memoria, niveles de severidad y visualización en Nextion. |
-| `Gestion_de_comunicaciones` | Protocolo UART0 (consola), UART1 (Nextion) e I²C (DS3231): tramas, baudrates y parsing. |
+| `Gestion_de_comunicaciones` | Protocolo UART0 (consola), UART1 (Nextion) e I2C (DS3231): tramas, baudrates y parsing. |
 | `Matriz_de_trazabilidad_de_requerimientos` | Relación entre requerimientos del sistema y su implementación en el firmware. |
 | `Casos_de_prueba` | Pruebas funcionales definidas para validar el comportamiento del sistema. |
 | `Decisiones_de_diseno_justificadas` | Registro de decisiones técnicas tomadas durante el desarrollo y su justificación. |
