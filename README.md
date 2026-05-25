@@ -32,11 +32,9 @@ Un caso aplicado puede ser el de la abuela de uno de nuestros integrantes, que d
 
 -Alerta sonora y visual (buzzer + led) si el usuario no recoge la pastilla después de un tiempo.
 
--Alerta si el compartimento de medicamentos está vacío.
-
 -Sistema de logging con timestamp, niveles INFO/WARN/ERROR y códigos estructurados. Se utiliza comunicación UART.
 
--Interfaz gráfica ILI9341([LCD-3.2-TOUCH-ILI9341] Pantalla táctil LCD de 3.2’’. ILI9341), el protocolo que usa es el SPI.
+-Interfaz gráfica NX4832K035, pantalla táctil con comunicación UART serial.
 
 -RTS DS3231 para manejo del tiempo, se comunica por vía I2C.
 
@@ -50,11 +48,9 @@ Un caso aplicado puede ser el de la abuela de uno de nuestros integrantes, que d
 #### Límites técnicos
 -Microcontrolador ESP32.
 
--Protocolos usados: I2C (RTC DS3231), UART (logging) y SPI (interfaz).
+-Protocolos usados: I2C (RTC DS3231), UART (logging).
 
 -El sistema no distingue el tipo de medicamento.
-
--Capacidad de dosis a dispensar (por determinar (depende del diseño físico)).
 
 -No es un dispositivo medico certificado.
 
@@ -75,7 +71,7 @@ Implementar la programación de hasta cuatro horarios diarios configurables desd
 Automatizar la dispensación física de la dosis programada en cada evento de medicación.
 
 #### #3
-Incorporar mecanismos de alerta sonora y visual, incluyendo notificación por no recolección y compartimiento vacío.
+Incorporar mecanismos de alerta sonora y visual, incluyendo notificación por no recolección.
 
 #### #4
 Registrar los eventos relevantes del sistema mediante un esquema de logging estructurado con marca temporal y niveles de severidad.
